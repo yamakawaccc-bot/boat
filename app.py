@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """展示タイム スマホ用アプリ (Streamlit)
 
-exhibition_scraper.py と同じフォルダに置いて起動する:
+exhibition_scraper.py / racelist.py と同じフォルダに置いて起動する:
     streamlit run app.py
 """
 import datetime as dt
@@ -10,13 +10,22 @@ import pandas as pd
 import streamlit as st
 
 import exhibition_scraper as ex
+import racelist as rl
 
 JST = dt.timezone(dt.timedelta(hours=9))
 COLS = {
-    "course": "枠", "racer_name": "選手", "exhibition_time": "展示", "順位": "順位",
+    "course": "枠", "racer_name": "選手", "racer_class": "級別",
+    "exhibition_time": "展示", "順位": "順位",
     "tilt": "チルト", "weight_kg": "体重", "adjust_weight": "調整",
     "start_exhibition_st": "ST展示", "parts_exchange": "部品", "prev_st": "前走ST",
+    "local_win": "当地勝率", "local_2rate": "当地2連率",
+    "motor_2rate": "モーター2連率", "avg_st": "平均ST",
+    "f_count": "F", "l_count": "L",
 }
+FMT = {"展示": "{:.2f}", "ST展示": "{:.2f}", "前走ST": "{:.2f}",
+       "チルト": "{:.1f}", "体重": "{:.1f}", "調整": "{:.1f}",
+       "当地勝率": "{:.2f}", "当地2連率": "{:.1f}", "モーター2連率": "{:.1f}",
+       "平均ST": "{:.2f}", "F": "{:.0f}", "L": "{:.0f}"}
 
 st.set_page_config(page_title="展示タイム", page_icon="🚤", layout="centered")
 st.title("🚤 展示タイム")
@@ -30,6 +39,14 @@ def get_venues(ymd: str):
 @st.cache_data(ttl=120, show_spinner=False)
 def get_race(jcd: int, ymd: str, rno: int):
     return ex.scrape_beforeinfo(jcd, ymd, [rno], verbose=False)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_racelist(jcd: int, ymd: str, rno: int):
+    try:
+        return rl.scrape_racelist(jcd, ymd, rno)
+    except Exception:
+        return []
 
 
 d = st.date_input("日付", value=dt.datetime.now(JST).date())
@@ -51,18 +68,28 @@ if st.button("最新に更新"):
 
 with st.spinner("取得中..."):
     rows = get_race(jcd, ymd, rno)
+    info = get_racelist(jcd, ymd, rno)
 
 if not rows:
     st.info("まだ公開されていません（または中止・取得失敗）。")
 else:
     df = pd.DataFrame(rows)
+    if info:
+        df = df.merge(pd.DataFrame(info).drop(columns=["date", "stadium", "race"]),
+                      on="course", how="left")
     df["順位"] = df["exhibition_time"].rank(method="min").astype("Int64")
     w = rows[0]
     st.caption(f"気温 {w.get('air_temp')}℃ / 風 {w.get('wind')}m / "
                f"水温 {w.get('water_temp')}℃ / 波 {w.get('wave')}cm")
+    if not info:
+        st.caption("※ 出走表データ（級別・当地成績・モーターなど）は取得できませんでした。")
     show = df[[c for c in COLS if c in df.columns]].rename(columns=COLS)
-    st.dataframe(show.style.highlight_min(subset=["展示"], color="#cdeff2"),
-                 hide_index=True)
+    fmt = {c: f for c, f in FMT.items() if c in show.columns}
+    styled = (show.style.format(fmt, na_rep="-")
+              .highlight_min(subset=["展示"],
+                             props="background-color:#0a7d8c;color:#ffffff;"
+                                   "font-weight:bold"))
+    st.dataframe(styled, hide_index=True)
 
 with st.expander("この会場の全レースをCSVで保存"):
     st.caption("12R分を順に取得します（1分ほどかかります）。")
