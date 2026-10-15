@@ -13,6 +13,11 @@ ATTACK_ST_GAP = 0.03   # 1号艇よりこれ以上速いと「攻める側」の
 MOTOR_HIGH = 40.0      # モーター2連率が高めの目安
 ATTACK_MIN_SCORE = 3   # 攻める艇と判定する点数
 SPREAD_SMALL = 0.12    # 展示タイムの差がこれ未満なら「差が小さい」
+INN_STRONG = 58.0      # 会場の1コース1着率がこれ以上なら「イン強い」
+INN_WEAK = 52.0        # これ以下なら「イン弱め」
+BASE_WIN = {2: 13.0, 3: 12.5, 4: 10.5, 5: 6.0, 6: 2.0}  # 全国的な目安（1着率%）
+COURSE_BONUS_GAP = 2.0 # 会場のコース1着率が目安よりこれ以上高ければ加点
+KM_MIN_SHARE = 30.0    # 決まり手の割合がこれ以上なら、その会場の傾向として使う
 
 STYLE = {2: "差し", 3: "まくり", 4: "まくり／まくり差し",
          5: "まくり差し（外から展開待ち）", 6: "まくり差し（外から展開待ち）"}
@@ -41,11 +46,42 @@ def _f_flag(rec):
     return bool(f) if pd.notna(f) else False
 
 
+def _style(c, venue):
+    """そのコースの攻め方。会場データがあれば、その会場で多い決まり手を使う。"""
+    if venue and c in venue:
+        km = {k: venue[c]["km"].get(k, 0.0) for k in ("まくり", "差し", "まくり差し")}
+        best = max(km, key=km.get)
+        if km[best] >= KM_MIN_SHARE:
+            return best
+    return STYLE[c]
+
+
+def _venue_text(venue):
+    parts = []
+    v1 = venue.get(1, {}).get("w1")
+    if v1 is not None:
+        tag = "強め" if v1 >= INN_STRONG else ("弱め" if v1 <= INN_WEAK else "標準的")
+        parts.append(f"1コース1着率{v1:.1f}%（全国の目安は55%前後、{tag}）")
+    km_parts = []
+    for c in (2, 3, 4):
+        d = venue.get(c)
+        if not d:
+            continue
+        km = {k: d["km"].get(k, 0.0) for k in ("まくり", "差し", "まくり差し")}
+        best = max(km, key=km.get)
+        km_parts.append(f"{c}コース{best}{km[best]:.0f}%")
+    if km_parts:
+        parts.append("決まり手の傾向は" + "、".join(km_parts))
+    period = venue.get("period")
+    tail = f"（集計 {period}）" if period else ""
+    return "。".join(parts) + "。" + tail
+
+
 def _names(cs):
     return "・".join(f"{c}号艇" for c in cs)
 
 
-def build_scenarios(df, wind=None, wave=None):
+def build_scenarios(df, wind=None, wave=None, venue=None):
     """[(見出し, 本文), ...] を返す。"""
     boats = {int(r["course"]): r for r in df.to_dict("records")}
     if 1 not in boats or len(boats) < 5:
@@ -86,9 +122,20 @@ def build_scenarios(df, wind=None, wave=None):
     elif cls1 == "B2":
         s1 -= 1
         why1.append("級別が低め（B2）")
+    v1 = venue.get(1, {}).get("w1") if venue else None
+    if v1 is not None:
+        if v1 >= INN_STRONG:
+            s1 += 1
+            why1.append(f"この会場は1コースが強い（1着率{v1:.0f}%）")
+        elif v1 <= INN_WEAK:
+            s1 -= 1
+            why1.append(f"この会場は1コースが弱め（1着率{v1:.0f}%）")
     verdict = "有利" if s1 >= 2 else ("五分" if s1 >= 0 else "不利")
     out = [("1号艇の逃げ",
             f"{verdict}。" + ("、".join(why1) if why1 else "材料が少なく判断しにくい"))]
+
+    if venue:
+        out.insert(0, ("会場のクセ", _venue_text(venue)))
 
     # --- 攻める艇 ---
     atk = []
@@ -112,13 +159,17 @@ def build_scenarios(df, wind=None, wave=None):
         if mo.get(c) is not None and mo[c] >= MOTOR_HIGH:
             sc += 1
             why.append("モーター2連率が高め")
+        if venue and c in venue and c in BASE_WIN \
+                and venue[c]["w1"] - BASE_WIN[c] >= COURSE_BONUS_GAP:
+            sc += 1
+            why.append(f"この会場は{c}コースの1着率が高め（{venue[c]['w1']:.0f}%）")
         if sc >= ATTACK_MIN_SCORE:
             atk.append((-sc, ex_rank.get(c) or 9, c, why))
     atk.sort()
     atk = atk[:2]
     if atk:
         out.append(("攻めそうな艇", "　".join(
-            f"{c}号艇（{STYLE[c]}）＝{'、'.join(w)}" for _, _, c, w in atk)))
+            f"{c}号艇（{_style(c, venue)}）＝{'、'.join(w)}" for _, _, c, w in atk)))
     else:
         out.append(("攻めそうな艇", "目立って攻めそうな艇は見当たりません。"))
 
