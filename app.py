@@ -22,10 +22,45 @@ COLS = {
     "motor_2rate": "モーター2連率", "avg_st": "平均ST",
     "f_count": "F", "l_count": "L",
 }
-FMT = {"展示": "{:.2f}", "ST展示": "{:.2f}", "前走ST": "{:.2f}",
-       "チルト": "{:.1f}", "体重": "{:.1f}", "調整": "{:.1f}",
-       "当地勝率": "{:.2f}", "当地2連率": "{:.1f}", "モーター2連率": "{:.1f}",
-       "平均ST": "{:.2f}", "F": "{:.0f}", "L": "{:.0f}"}
+NUMFMT = {"exhibition_time": "{:.2f}", "順位": "{:.0f}", "tilt": "{:.1f}",
+          "weight_kg": "{:.1f}", "adjust_weight": "{:.1f}", "prev_st": "{:.2f}",
+          "local_win": "{:.2f}", "local_2rate": "{:.1f}", "motor_2rate": "{:.1f}",
+          "avg_st": "{:.2f}", "f_count": "{:.0f}", "l_count": "{:.0f}"}
+
+
+# --- helpers ---
+def cell(v, f):
+    return "-" if pd.isna(v) else f.format(v)
+
+
+def text(v):
+    return "-" if pd.isna(v) or v == "" else str(v)
+
+
+def st_text(rec):
+    """スタート展示ST。フライング(F)なら先頭に F を付ける。"""
+    v = rec.get("start_exhibition_st")
+    if pd.isna(v):
+        return "-"
+    f = rec.get("start_exhibition_f")
+    flag = bool(f) if pd.notna(f) else False
+    return ("F" if flag else "") + f"{v:.2f}".lstrip("0")
+
+
+def build_table(df):
+    """表示用に、すべて文字列にした表を作る（空欄は「-」）。"""
+    out = {}
+    for key, label in COLS.items():
+        if key == "start_exhibition_st":
+            out[label] = [st_text(r) for r in df.to_dict("records")]
+        elif key in NUMFMT:
+            if key in df.columns:
+                out[label] = [cell(v, NUMFMT[key]) for v in df[key]]
+        elif key in df.columns:
+            out[label] = [text(v) for v in df[key]]
+    return pd.DataFrame(out, index=df.index)
+# --- end helpers ---
+
 
 st.set_page_config(page_title="展示タイム", page_icon="🚤", layout="centered")
 st.title("🚤 展示タイム")
@@ -83,12 +118,13 @@ else:
                f"水温 {w.get('water_temp')}℃ / 波 {w.get('wave')}cm")
     if not info:
         st.caption("※ 出走表データ（級別・当地成績・モーターなど）は取得できませんでした。")
-    show = df[[c for c in COLS if c in df.columns]].rename(columns=COLS)
-    fmt = {c: f for c, f in FMT.items() if c in show.columns}
-    styled = (show.style.format(fmt, na_rep="-")
-              .highlight_min(subset=["展示"],
-                             props="background-color:#0a7d8c;color:#ffffff;"
-                                   "font-weight:bold"))
+    show = build_table(df)
+    best = df["exhibition_time"].min()
+    mask = (df["exhibition_time"] == best).tolist()
+    styled = show.style.apply(
+        lambda col: ["background-color:#0a7d8c;color:#ffffff;font-weight:bold"
+                     if m else "" for m in mask],
+        subset=["展示"])
     st.dataframe(styled, hide_index=True)
 
 with st.expander("この会場の全レースをCSVで保存"):
