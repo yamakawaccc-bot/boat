@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """展示タイム スマホ用アプリ (Streamlit)
 
-exhibition_scraper.py / racelist.py / scenario.py と同じフォルダに置いて起動する:
+exhibition_scraper.py / racelist.py / scenario.py / venue_stats.py と同じフォルダに置いて起動する:
     streamlit run app.py
 """
 import datetime as dt
@@ -12,6 +12,7 @@ import streamlit as st
 import exhibition_scraper as ex
 import racelist as rl
 import scenario as sn
+import venue_stats as vs
 
 JST = dt.timezone(dt.timedelta(hours=9))
 COLS = {
@@ -85,6 +86,14 @@ def get_racelist(jcd: int, ymd: str, rno: int):
         return []
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_venue_stats(jcd: int):
+    try:
+        return vs.fetch_venue_stats(jcd)
+    except Exception:
+        return None
+
+
 d = st.date_input("日付", value=dt.datetime.now(JST).date())
 ymd = d.strftime("%Y%m%d")
 
@@ -105,6 +114,7 @@ if st.button("最新に更新"):
 with st.spinner("取得中..."):
     rows = get_race(jcd, ymd, rno)
     info = get_racelist(jcd, ymd, rno)
+    vstats = get_venue_stats(jcd)
 
 if not rows:
     st.info("まだ公開されていません（または中止・取得失敗）。")
@@ -130,7 +140,8 @@ else:
 
     st.markdown("#### 展開の目安")
     try:
-        for title, body in sn.build_scenarios(df, w.get("wind"), w.get("wave")):
+        for title, body in sn.build_scenarios(df, w.get("wind"), w.get("wave"),
+                                            venue=vstats):
             st.markdown(f"**{title}**　{body}")
     except Exception:
         st.caption("展開の目安を作れませんでした。")
