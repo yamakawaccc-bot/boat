@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """展示タイム スマホ用アプリ (Streamlit)
 
-exhibition_scraper.py / racelist.py と同じフォルダに置いて起動する:
+exhibition_scraper.py / racelist.py / scenario.py と同じフォルダに置いて起動する:
     streamlit run app.py
 """
 import datetime as dt
@@ -11,6 +11,7 @@ import streamlit as st
 
 import exhibition_scraper as ex
 import racelist as rl
+import scenario as sn
 
 JST = dt.timezone(dt.timedelta(hours=9))
 COLS = {
@@ -126,6 +127,14 @@ else:
                      if m else "" for m in mask],
         subset=["展示"])
     st.dataframe(styled, hide_index=True)
+
+    st.markdown("#### 展開の目安")
+    try:
+        for title, body in sn.build_scenarios(df, w.get("wind"), w.get("wave")):
+            st.markdown(f"**{title}**　{body}")
+    except Exception:
+        st.caption("展開の目安を作れませんでした。")
+    st.caption("※ ルールによる簡易的な目安です。的中を保証するものではありません。")
 
 with st.expander("この会場の全レースをCSVで保存"):
     st.caption("12R分を順に取得します（1分ほどかかります）。")
