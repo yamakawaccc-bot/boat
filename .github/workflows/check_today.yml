@@ -11,4 +11,4 @@ jobs:
           python-version: "3.12"
       - run: pip install requests pandas
       - name: Run python race_table.py
-        run: python race_table.py
+        run: python race_filter.py
