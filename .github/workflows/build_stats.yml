@@ -4,7 +4,7 @@ on:
     inputs:
       days:
         description: "集計日数"
-        default: "180"
+        default: "540"
   schedule:
     - cron: "30 20 * * *"
 permissions:
@@ -19,7 +19,7 @@ jobs:
           python-version: "3.12"
       - run: pip install requests pandas
       - name: Run python build_stats.py
-        run: python build_stats.py --days ${{ github.event.inputs.days || 180 }}
+        run: python build_stats.py --days ${{ github.event.inputs.days || 540 }}
       - name: Commit
         run: |
           git config user.name "github-actions"
