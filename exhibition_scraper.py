@@ -35,13 +35,13 @@ OPENAPI = "https://boatraceopenapi.github.io"
 
 # 会場名マッピングは「本日のレース」index から動的に解決する。
 # index取得失敗時のフォールバック用（実データから確認できたペアのみ掲載）。
-VENUE_NAMES = ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑",
-               "びわこ", "尼崎", "住之江", "児島", "丸亀", "琴平", "鳴門", "宮島",
-               "徳山", "下関", "若松", "芦屋", "福岡", "唐津", "大村", "三角"]
-VENUE_MAP_FALLBACK = {1: "桐生", 2: "戸田", 4: "平和島", 6: "浜名湖", 11: "びわこ", 12: "住之江",
-                      13: "尼崎", 14: "鳴門", 15: "丸亀", 20: "若松", 21: "芦屋",
-                      22: "福岡", 24: "大村"}
-
+VENUE_BY_JCD = {1: "桐生", 2: "戸田", 3: "江戸川", 4: "平和島", 5: "多摩川",
+                6: "浜名湖", 7: "蒲郡", 8: "常滑", 9: "津", 10: "三国",
+                11: "びわこ", 12: "住之江", 13: "尼崎", 14: "鳴門", 15: "丸亀",
+                16: "児島", 17: "宮島", 18: "徳山", 19: "下関", 20: "若松",
+                21: "芦屋", 22: "福岡", 23: "唐津", 24: "大村"}
+VENUE_NAMES = list(VENUE_BY_JCD.values())
+VENUE_MAP_FALLBACK = VENUE_BY_JCD
 
 # ---------------------------------------------------------------- 基盤
 def _get(url: str, session: requests.Session | None = None,
@@ -79,13 +79,9 @@ def list_live_venues(yyyymmdd: str, session=None) -> list[tuple[int, str]]:
     r = _get(f"{OWPC}/index?hoted={yyyymmdd}", session)
     if r is None:
         return [(k, v) for k, v in sorted(VENUE_MAP_FALLBACK.items())]
-    html, pairs = r.text, {}
-    for m in re.finditer(rf"jcd=(\d{{2}})(?:&amp;|&)hd={yyyymmdd}", html):
-        window = html[max(0, m.start() - 1500):m.start()]
-        found = [n for n in VENUE_NAMES if n in window]
-        if found:
-            pairs.setdefault(int(m.group(1)), found[-1])
-    return sorted(pairs.items())
+    html = r.text
+    jcds = {int(m.group(1)) for m in re.finditer(rf"jcd=(\d{{2}})(?:&amp;|&)hd={yyyymmdd}", html)}
+    return sorted((j, VENUE_BY_JCD[j]) for j in jcds if j in VENUE_BY_JCD)
 
 
 # ---------------------------------------------------------------- 公式 直前情報
