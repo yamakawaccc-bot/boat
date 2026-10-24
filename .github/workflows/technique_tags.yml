@@ -1,0 +1,37 @@
+name: technique tags
+
+# 手動で実行するワークフロー（Actionsタブ → technique tags → Run workflow）
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "集計する日数（最初は90）"
+        default: "90"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run technique_tags.py
+        env:
+          DAYS: ${{ inputs.days || '90' }}
+        run: python technique_tags.py --days "$DAYS"
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add technique_data
+          git diff --staged --quiet || git commit -m "update technique tags"
+          git pull --rebase
+          git push
+
